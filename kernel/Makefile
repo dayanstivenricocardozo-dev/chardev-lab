@@ -1,4 +1,4 @@
-obj-m += kernel.o
+obj-m += mi_char_device.o
 
 KDIR := /lib/modules/$(shell uname -r)/build
 PWD  := $(shell pwd)
