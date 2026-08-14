@@ -1,1 +1,0 @@
-savedcmd_/home/dyrrv/proyectos/chardev-lab/kernel/kernel.mod := printf '%s\n'   kernel.o | awk '!x[$$0]++ { print("/home/dyrrv/proyectos/chardev-lab/kernel/"$$0) }' > /home/dyrrv/proyectos/chardev-lab/kernel/kernel.mod

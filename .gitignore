@@ -10,3 +10,9 @@
 Module.symvers
 modules.order
 .tmp_versions/
+
+# Archivos .cmd del build de kernel
+*.cmd
+
+# Binarios compilados de userspace
+userspace/chardev_test
