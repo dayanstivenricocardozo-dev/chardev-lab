@@ -17,3 +17,4 @@ modules.order
 # Binarios compilados de userspace
 userspace/chardev_test
 userspace/chardev_concurrent
+userspace/chardev_ioctl_test

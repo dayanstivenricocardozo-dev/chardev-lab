@@ -6,6 +6,7 @@
 #include <linux/uaccess.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
+#include "mi_char_device_ioctl.h"
 
 #define DEVICE_NAME "mi_char_device"
 #define CLASS_NAME  "mi_char"
@@ -146,15 +147,58 @@ static ssize_t mi_write(struct file *file,
 }
 
 /*
+ * mi_ioctl()
+ *
+ * Comandos personalizados del dispositivo.
+ */
+static long mi_ioctl(struct file *file,
+                     unsigned int cmd,
+                     unsigned long arg)
+{
+    struct mi_dev_data *data = file->private_data;
+
+    switch (cmd) {
+
+    case MI_IOC_GET_SIZE: {
+        unsigned int size;
+
+        mutex_lock(&data->lock);
+        size = (unsigned int)data->size;
+        mutex_unlock(&data->lock);
+
+        if (copy_to_user((unsigned int __user *)arg,
+                         &size,
+                         sizeof(size))) {
+            return -EFAULT;
+        }
+
+        return 0;
+    }
+
+    case MI_IOC_CLEAR:
+        mutex_lock(&data->lock);
+        data->size = 0;
+        data->buffer[0] = '\0';
+        mutex_unlock(&data->lock);
+        return 0;
+
+    default:
+        return -ENOTTY;
+    }
+}
+
+
+/*
  * Operaciones del char device
  */
 static const struct file_operations mi_fops = {
-    .owner   = THIS_MODULE,
-    .open    = mi_open,
-    .read    = mi_read,
-    .write   = mi_write,
-    .release = mi_release,
-    .llseek  = default_llseek,
+    .owner          = THIS_MODULE,
+    .open           = mi_open,
+    .read           = mi_read,
+    .write          = mi_write,
+    .release        = mi_release,
+    .llseek         = default_llseek,
+    .unlocked_ioctl = mi_ioctl,
 };
 
 /*
