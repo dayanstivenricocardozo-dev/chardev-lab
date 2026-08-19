@@ -19,3 +19,4 @@ userspace/chardev_test
 userspace/chardev_concurrent
 userspace/chardev_ioctl_test
 userspace/chardev_attacker
+userspace/vuln_attacker
