@@ -21,3 +21,4 @@ userspace/chardev_ioctl_test
 userspace/chardev_attacker
 userspace/vuln_attacker
 userspace/vuln_attacker
+userspace/module_detector
