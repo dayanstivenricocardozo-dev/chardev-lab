@@ -22,3 +22,4 @@ userspace/chardev_attacker
 userspace/vuln_attacker
 userspace/vuln_attacker
 userspace/module_detector
+userspace/funptr_attacker
