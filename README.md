@@ -71,3 +71,4 @@ dmesg | tail -n 10
 
 # Descargar módulo
 sudo rmmod nombre_del_modulo
+

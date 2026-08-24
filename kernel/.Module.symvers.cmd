@@ -1,1 +1,0 @@
-savedcmd_/home/dyrrv/proyectos/chardev-lab/kernel/Module.symvers :=  scripts/mod/modpost -M -m       -o /home/dyrrv/proyectos/chardev-lab/kernel/Module.symvers -T /home/dyrrv/proyectos/chardev-lab/kernel/modules.order -i Module.symvers -e 
