@@ -71,3 +71,12 @@ no alertar o alertar con nivel de severidad informativo.
 Ejecutaré el exploit de `chardev-lab/privesc/` que eleva de UID 1000 a 
 UID 0. El detector debería alertar el cambio. Documentaré el resultado 
 en este mismo documento.
+
+
+## 12. Prueba del detector versión 1
+Ejecuté el snapshot del hito uno para ver que era lo que devolvía, pero antes lo compilé, no dio nada de errores ni de warnings, al ejecutarlo, saierón los procesos con su PID y starttime correctamente, también mostró  corre	ctamente su EUID.
+Algunos procesos: 
+PID: 5643 EUID: 1000 STARTTIME: 966359 COMM: xfce4-terminal
+PID: 5652 EUID: 1000 STARTTIME: 966368 COMM: bash
+PID: 5661 EUID: 1000 STARTTIME: 967859 COMM: snapshot
+Hito 1 terminado correctamente.
