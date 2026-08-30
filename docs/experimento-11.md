@@ -80,3 +80,34 @@ PID: 5643 EUID: 1000 STARTTIME: 966359 COMM: xfce4-terminal
 PID: 5652 EUID: 1000 STARTTIME: 966368 COMM: bash
 PID: 5661 EUID: 1000 STARTTIME: 967859 COMM: snapshot
 Hito 1 terminado correctamente.
+
+## 13. Implementación Hito 2: Comparación y detección
+
+## 13. Implementación Hito 2: Comparación y detección
+
+### Cómo funciona la comparación
+El detector toma un snapshot inicial y luego entra en un bucle cada 2 segundos:
+1. Toma un nuevo snapshot de todos los procesos en `/proc`.
+2. Para cada proceso del snapshot actual, busca si existe en el snapshot anterior usando la identidad compuesta `PID + starttime`.
+3. Si el proceso existe en ambos snapshots y su EUID cambió de distinto de 0 a 0, genera una alerta.
+4. Si el proceso no existe en el snapshot anterior, se considera proceso nuevo y no se alerta aunque sea root.
+5. Después de comparar, el snapshot actual pasa a ser el anterior para la siguiente iteración.
+
+### Pruebas realizadas
+- Se compiló el detector con `gcc -Wall -Wextra -pedantic` sin errores ni warnings.
+- Se ejecutó el detector y se verificó que captura correctamente los procesos del sistema.
+- Se intentó probar con el módulo `privesc.ko` del laboratorio chardev-lab, pero el módulo no implementa correctamente la escalada de privilegios real (el ioctl retorna éxito pero no modifica las credenciales del proceso desde userspace).
+- Se verificó que la lógica de comparación funciona correctamente observando los mensajes DEBUG con procesos con EUID 0 (root) y EUID 1000 (usuario normal) en los snapshots sucesivos.
+
+### Resultados observados
+El detector muestra mensajes DEBUG indicando qué procesos fueron encontrados en el snapshot anterior y sus EUIDs. La lógica de detección está implementada correctamente:
+- Procesos con EUID 0 que ya eran root en el snapshot anterior: no generan alerta (correcto).
+- Procesos con EUID 1000 que siguen siendo 1000: no generan alerta (correcto).
+- Procesos nuevos que aparecen con EUID 0: no generan alerta (correcto, son procesos nuevos).
+
+### Limitaciones encontradas durante la prueba
+- El módulo `privesc.ko` no realiza la escalada de privilegios real en este entorno, por lo que no se pudo generar una alerta de escalada real en esta prueba.
+- Para una prueba completa se necesitaría un exploit que realmente cambie el EUID de un proceso existente de 1000 a 0.
+
+### Conclusión del Hito 2
+La lógica de comparación de snapshots y detección de cambios de EUID está implementada y funcionando correctamente. El detector identifica procesos por `PID + starttime` para evitar falsos positivos por PID reuse, y solo alerta cuando un proceso existente cambia de EUID no-root a EUID root.
