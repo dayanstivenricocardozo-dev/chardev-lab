@@ -111,3 +111,65 @@ El detector muestra mensajes DEBUG indicando qué procesos fueron encontrados en
 
 ### Conclusión del Hito 2
 La lógica de comparación de snapshots y detección de cambios de EUID está implementada y funcionando correctamente. El detector identifica procesos por `PID + starttime` para evitar falsos positivos por PID reuse, y solo alerta cuando un proceso existente cambia de EUID no-root a EUID root.
+
+## 14. Implementación Hito 3: Whitelist, logging y señales
+
+### Whitelist
+Se agregaron estos procesos "systemd",
+"sshd"
+"cron",
+"rsyslogd"
+
+porque no queremos recibir falsos positivos, son procesos que si se inician en root pero que no son hechos por atacantes para escalar privilegios, sino que son del sistema
+
+### Logging a archivo
+[Cómo funciona y ejemplo de alertas.log]
+Cuando pasa algo en el sistema crea archivos log y se guardan en el para saber que es lo que ha estado ocurriendo
+
+### Manejo de señales
+Nuestro sistema se detiene con ctrl+c gracias a que pusimos las flags, para que cuando tenga que detenerlo lo haga sin problemas, entonces el programa es como
+flag→ 0,1→ detener
+
+### Respuesta a la pregunta de entrevista
+[Por qué volatile sig_atomic_t]
+volatile Porque le indica al compilador que el valor puede cambiar de forma repentina.
+sig_atomic_t Garantiza que la lectura/escritura de la variable es atómica, es decir, no puede ser interrumpida a mitad de operación
+
+
+### Pruebas realizadas
+Se intentó obtener privilegios con su a ver si salian alertas, tambien con sudo, pero no se detectó nada porque al comparar las cadenas se da cuenta de que no es un problema
+
+## 15. Implementación Hito 4: Contexto enriquecido en alertas
+
+### Qué se agregó
+- **CMDLINE completo**: línea de comandos completa del proceso (ej: `/bin/bash -i`)
+- **PPID**: PID del proceso padre, útil para rastrear quién lanzó el proceso sospechoso
+- **UID real**: además del EUID (efectivo), ahora también se muestra el UID real del usuario
+
+### Formato de alerta actualizado
+
+Este formato muestra:
+- PID del proceso que escaló privilegios
+- Nombre del comando (COMM)
+- Línea de comandos completa (CMDLINE)
+- PID del padre (PPID)
+- UID real del usuario
+- Cambio de EUID: valor anterior -> valor actual
+
+### Limitaciones
+- Los procesos del kernel (como kworker, migration, etc.) no tienen cmdline porque no fueron lanzados por un usuario. Aparecen con cmdline vacío.
+- Estos procesos siempre tienen EUID 0 desde el inicio, por lo que no generan alertas de escalada de privilegios.
+- El detector no puede distinguir entre un proceso legítimo que necesita root y un exploit malicioso. Solo detecta el cambio de privilegios.
+
+### Pruebas realizadas
+1. Se compiló el detector con `gcc -Wall -Wextra -pedantic` sin warnings.
+2. Se ejecutó el detector durante varios minutos observando procesos del sistema.
+3. Se verificó que los procesos del kernel aparecen con cmdline vacío pero no generan falsas alertas.
+4. Se probó detener el detector con Ctrl+C y se verificó que cierra limpiamente.
+5. Se verificó que el archivo `alertas.log` se crea correctamente y puede ser leído después.
+
+### Mejora futura
+Para una versión más completa, se podría:
+- Agregar detección de cambios de UID/GID adicionales (no solo EUID)
+- Monitorear cambios en capabilities del proceso
+- Integrar con auditd o eBPF para detección en tiempo real sin polling

@@ -4,6 +4,7 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <signal.h>
 
 
 struct proceso_info {
@@ -11,16 +12,47 @@ struct proceso_info {
     int euid;
     long starttime;
     char comm[256];
+
+    char cmdline[512];
+    int ppid;
+    int uid;
 };
 
 
-// TODO: leer_euid(pid)
-// Abre /proc/[pid]/status.
-// Busca la línea "Uid:".
-// Extrae el segundo número (effective UID).
-// Retorna euid, o -1 si falla.
+volatile sig_atomic_t flag = 1;
 
-int leer_euid(int pid) {
+
+void handler(int signal) {
+    (void)signal;
+    flag = 0;
+}
+
+
+const char *whitelist[] = {
+    "systemd",
+    "sshd",
+    "cron",
+    "rsyslogd"
+};
+
+
+int en_whitelist(const char *nombre) {
+
+    int cantidad = sizeof(whitelist) / sizeof(whitelist[0]);
+
+    for (int i = 0; i < cantidad; i++) {
+
+        if (strcmp(nombre, whitelist[i]) == 0) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+
+int leer_uids(int pid, int *uid_real, int *euid) {
+
     char ruta[64];
 
     snprintf(ruta, sizeof(ruta), "/proc/%d/status", pid);
@@ -34,12 +66,14 @@ int leer_euid(int pid) {
     char linea[256];
 
     while (fgets(linea, sizeof(linea), archivo) != NULL) {
-        if (strncmp(linea, "Uid:", 4) == 0) {
-            int real, efectivo;
 
-            if (sscanf(linea, "Uid: %d %d", &real, &efectivo) == 2) {
+        if (strncmp(linea, "Uid:", 4) == 0) {
+
+            if (sscanf(linea, "Uid: %d %d",
+                       uid_real, euid) == 2) {
+
                 fclose(archivo);
-                return efectivo;
+                return 0;
             }
 
             fclose(archivo);
@@ -48,17 +82,81 @@ int leer_euid(int pid) {
     }
 
     fclose(archivo);
+
     return -1;
 }
 
 
-// TODO: leer_starttime(pid)
-// Abre /proc/[pid]/stat.
-// Busca el último ')'.
-// Obtiene el campo starttime.
-// Retorna starttime, o -1 si falla.
+int leer_cmdline(int pid, char *buffer, int size) {
+    char ruta[64];
+    snprintf(ruta, sizeof(ruta), "/proc/%d/cmdline", pid);
+
+    FILE *archivo = fopen(ruta, "r");
+    if (archivo == NULL) {
+        buffer[0] = '\0';  // cmdline vacío
+        return 0;          // no es error, solo no tiene cmdline
+    }
+
+    int leidos = fread(buffer, 1, size - 1, archivo);
+    fclose(archivo);
+
+    if (leidos <= 0) {
+        buffer[0] = '\0';  // cmdline vacío
+        return 0;
+    }
+
+    buffer[leidos] = '\0';
+
+    for (int i = 0; i < leidos; i++) {
+        if (buffer[i] == '\0') {
+            buffer[i] = ' ';
+        }
+    }
+    buffer[leidos] = '\0';
+
+    return 0;
+}
+
+
+int leer_ppid(int pid) {
+
+    char ruta[64];
+
+    snprintf(ruta, sizeof(ruta), "/proc/%d/status", pid);
+
+    FILE *archivo = fopen(ruta, "r");
+
+    if (archivo == NULL) {
+        return -1;
+    }
+
+    char linea[256];
+
+    while (fgets(linea, sizeof(linea), archivo) != NULL) {
+
+        if (strncmp(linea, "PPid:", 5) == 0) {
+
+            int ppid;
+
+            if (sscanf(linea, "PPid: %d", &ppid) == 1) {
+
+                fclose(archivo);
+                return ppid;
+            }
+
+            fclose(archivo);
+            return -1;
+        }
+    }
+
+    fclose(archivo);
+
+    return -1;
+}
+
 
 long leer_starttime(int pid) {
+
     char ruta[64];
 
     snprintf(ruta, sizeof(ruta), "/proc/%d/stat", pid);
@@ -72,6 +170,7 @@ long leer_starttime(int pid) {
     char linea[4096];
 
     if (fgets(linea, sizeof(linea), archivo) == NULL) {
+
         fclose(archivo);
         return -1;
     }
@@ -79,6 +178,7 @@ long leer_starttime(int pid) {
     char *fin_comm = strrchr(linea, ')');
 
     if (fin_comm == NULL) {
+
         fclose(archivo);
         return -1;
     }
@@ -88,14 +188,17 @@ long leer_starttime(int pid) {
     char *token = strtok(datos, " ");
 
     if (token == NULL) {
+
         fclose(archivo);
         return -1;
     }
 
     for (int i = 3; i < 22; i++) {
+
         token = strtok(NULL, " ");
 
         if (token == NULL) {
+
             fclose(archivo);
             return -1;
         }
@@ -109,12 +212,8 @@ long leer_starttime(int pid) {
 }
 
 
-// TODO: leer_comm(pid, buffer, size)
-// Abre /proc/[pid]/comm.
-// Copia el nombre del proceso al buffer.
-// Retorna 0 en éxito, -1 en error.
-
 int leer_comm(int pid, char *buffer, int size) {
+
     char ruta[64];
 
     snprintf(ruta, sizeof(ruta), "/proc/%d/comm", pid);
@@ -126,6 +225,7 @@ int leer_comm(int pid, char *buffer, int size) {
     }
 
     if (fgets(buffer, size, archivo) == NULL) {
+
         fclose(archivo);
         return -1;
     }
@@ -138,14 +238,8 @@ int leer_comm(int pid, char *buffer, int size) {
 }
 
 
-// TODO: tomar_snapshot(array, max_procs)
-// Abre /proc.
-// Recorre las entradas.
-// Filtra solo los nombres numéricos.
-// Para cada PID obtiene euid, starttime y comm.
-// Retorna la cantidad de procesos.
-
 int tomar_snapshot(struct proceso_info array[], int max_procs) {
+
     DIR *dir = opendir("/proc");
 
     if (dir == NULL) {
@@ -160,7 +254,9 @@ int tomar_snapshot(struct proceso_info array[], int max_procs) {
         int es_pid = 1;
 
         for (int i = 0; entrada->d_name[i] != '\0'; i++) {
+
             if (!isdigit((unsigned char)entrada->d_name[i])) {
+
                 es_pid = 0;
                 break;
             }
@@ -176,11 +272,36 @@ int tomar_snapshot(struct proceso_info array[], int max_procs) {
 
         int pid = atoi(entrada->d_name);
 
-        int euid = leer_euid(pid);
 
-        if (euid < 0) {
+        /* Leer UID real y EUID */
+
+        int uid;
+        int euid;
+
+        if (leer_uids(pid, &uid, &euid) < 0) {
             continue;
         }
+
+
+        /* Leer PPID */
+
+        int ppid = leer_ppid(pid);
+
+        if (ppid < 0) {
+            continue;
+        }
+
+
+        /* Leer CMDLINE */
+
+        char cmdline[512];
+
+        if (leer_cmdline(pid, cmdline, sizeof(cmdline)) < 0) {
+            continue;
+        }
+
+
+        /* Leer STARTTIME */
 
         long starttime = leer_starttime(pid);
 
@@ -188,21 +309,46 @@ int tomar_snapshot(struct proceso_info array[], int max_procs) {
             continue;
         }
 
+
+        /* Leer COMM */
+
         char comm[256];
 
         if (leer_comm(pid, comm, sizeof(comm)) < 0) {
             continue;
         }
 
+
+        /* Guardar información en el snapshot */
+
         array[contador].pid = pid;
+
         array[contador].euid = euid;
+
         array[contador].starttime = starttime;
+
+        array[contador].uid = uid;
+
+        array[contador].ppid = ppid;
+
 
         strncpy(array[contador].comm,
                 comm,
                 sizeof(array[contador].comm) - 1);
 
-        array[contador].comm[sizeof(array[contador].comm) - 1] = '\0';
+        array[contador].comm[
+            sizeof(array[contador].comm) - 1
+        ] = '\0';
+
+
+        strncpy(array[contador].cmdline,
+                cmdline,
+                sizeof(array[contador].cmdline) - 1);
+
+        array[contador].cmdline[
+            sizeof(array[contador].cmdline) - 1
+        ] = '\0';
+
 
         contador++;
     }
@@ -212,9 +358,6 @@ int tomar_snapshot(struct proceso_info array[], int max_procs) {
     return contador;
 }
 
-
-// Busca un proceso por PID + starttime.
-// Retorna el índice si lo encuentra, -1 si no existe.
 
 int buscar_proceso(struct proceso_info array[], int cantidad,
                    int pid, long starttime) {
@@ -232,16 +375,11 @@ int buscar_proceso(struct proceso_info array[], int cantidad,
 }
 
 
-// Compara el snapshot anterior con el actual.
-// Detecta procesos que pasaron de EUID != 0 a EUID == 0.
-
 void comparar_snapshots(
     struct proceso_info anterior[], int cant_anterior,
-    struct proceso_info actual[], int cant_actual
+    struct proceso_info actual[], int cant_actual,
+    FILE *log
 ) {
-
-    printf("DEBUG: Snapshot anterior tiene %d procesos\n", cant_anterior);
-    printf("DEBUG: Snapshot actual tiene %d procesos\n", cant_actual);
 
     for (int i = 0; i < cant_actual; i++) {
 
@@ -252,19 +390,65 @@ void comparar_snapshots(
             actual[i].starttime
         );
 
-        // AGREGA ESTO TEMPORALMENTE:
-        if (indice != -1) {
-            printf("DEBUG: Proceso PID %d encontrado en anterior. EUID anterior: %d, EUID actual: %d\n",
-                   actual[i].pid, anterior[indice].euid, actual[i].euid);
-        }
 
         if (indice == -1) {
             continue;
         }
 
-        if (anterior[indice].euid != 0 && actual[i].euid == 0) {
-            printf("ALERTA: PID %d (%s) escaló de EUID %d a 0\n",
-                   actual[i].pid, actual[i].comm, anterior[indice].euid);
+
+        /* Detectar escalada de privilegios */
+
+        if (anterior[indice].euid != 0 &&
+            actual[i].euid == 0) {
+
+
+            /* Revisar whitelist */
+
+            if (en_whitelist(actual[i].comm)) {
+
+                printf(
+                    "[INFO] PID %d (%s) está en whitelist. "
+                    "No se alerta.\n",
+                    actual[i].pid,
+                    actual[i].comm
+                );
+
+                continue;
+            }
+
+
+            /* Mostrar alerta en pantalla */
+
+            printf(
+                "ALERTA: PID=%d COMM=%s CMDLINE=%s "
+                "PPID=%d UID=%d EUID=%d->%d\n",
+                actual[i].pid,
+                actual[i].comm,
+                actual[i].cmdline,
+                actual[i].ppid,
+                actual[i].uid,
+                anterior[indice].euid,
+                actual[i].euid
+            );
+
+
+            /* Guardar alerta en archivo */
+
+            fprintf(
+                log,
+                "ALERTA: PID=%d COMM=%s CMDLINE=%s "
+                "PPID=%d UID=%d EUID=%d->%d\n",
+                actual[i].pid,
+                actual[i].comm,
+                actual[i].cmdline,
+                actual[i].ppid,
+                actual[i].uid,
+                anterior[indice].euid,
+                actual[i].euid
+            );
+
+
+            fflush(log);
         }
     }
 }
@@ -272,47 +456,72 @@ void comparar_snapshots(
 
 int main() {
 
-    struct proceso_info snapshot_anterior[4096];
-    struct proceso_info snapshot_actual[4096];
+    signal(SIGINT, handler);
+    signal(SIGTERM, handler);
 
-    // Primer snapshot.
-    int cant_anterior =
-        tomar_snapshot(snapshot_anterior, 4096);
 
-    if (cant_anterior < 0) {
+    FILE *log = fopen("alertas.log", "a");
+
+    if (log == NULL) {
+
+        perror("Error al abrir alertas.log");
+
         return 1;
     }
 
-    while (1) {
 
-        // Esperamos 2 segundos.
+    struct proceso_info snapshot_anterior[4096];
+
+    struct proceso_info snapshot_actual[4096];
+
+
+    int cant_anterior =
+        tomar_snapshot(snapshot_anterior, 4096);
+
+
+    if (cant_anterior < 0) {
+
+        fclose(log);
+
+        return 1;
+    }
+
+
+    while (flag) {
+
         sleep(2);
 
-        // Nuevo snapshot.
+
         int cant_actual =
             tomar_snapshot(snapshot_actual, 4096);
+
 
         if (cant_actual < 0) {
             continue;
         }
 
-        // Comparamos anterior vs actual.
+
         comparar_snapshots(
             snapshot_anterior,
             cant_anterior,
             snapshot_actual,
-            cant_actual
+            cant_actual,
+            log
         );
 
-        // El snapshot actual pasa a ser el anterior.
+
         memcpy(
             snapshot_anterior,
             snapshot_actual,
             cant_actual * sizeof(struct proceso_info)
         );
 
+
         cant_anterior = cant_actual;
     }
+
+
+    fclose(log);
 
     return 0;
 }
