@@ -173,3 +173,9 @@ Para una versión más completa, se podría:
 - Agregar detección de cambios de UID/GID adicionales (no solo EUID)
 - Monitorear cambios en capabilities del proceso
 - Integrar con auditd o eBPF para detección en tiempo real sin polling
+##16. Agregar detector de modulos.
+
+Ahora nuesto snapshot puede detectar modulos gracias a comparar con /proc/
+y /sys/ en busca de modulos, que quizás no aparecen en el sistema o estan escondidos.
+
+

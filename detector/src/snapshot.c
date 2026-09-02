@@ -93,15 +93,15 @@ int leer_cmdline(int pid, char *buffer, int size) {
 
     FILE *archivo = fopen(ruta, "r");
     if (archivo == NULL) {
-        buffer[0] = '\0';  // cmdline vacío
-        return 0;          // no es error, solo no tiene cmdline
+        buffer[0] = '\0';
+        return 0;
     }
 
     int leidos = fread(buffer, 1, size - 1, archivo);
     fclose(archivo);
 
     if (leidos <= 0) {
-        buffer[0] = '\0';  // cmdline vacío
+        buffer[0] = '\0';
         return 0;
     }
 
@@ -112,6 +112,7 @@ int leer_cmdline(int pid, char *buffer, int size) {
             buffer[i] = ' ';
         }
     }
+
     buffer[leidos] = '\0';
 
     return 0;
@@ -272,9 +273,6 @@ int tomar_snapshot(struct proceso_info array[], int max_procs) {
 
         int pid = atoi(entrada->d_name);
 
-
-        /* Leer UID real y EUID */
-
         int uid;
         int euid;
 
@@ -282,17 +280,11 @@ int tomar_snapshot(struct proceso_info array[], int max_procs) {
             continue;
         }
 
-
-        /* Leer PPID */
-
         int ppid = leer_ppid(pid);
 
         if (ppid < 0) {
             continue;
         }
-
-
-        /* Leer CMDLINE */
 
         char cmdline[512];
 
@@ -300,17 +292,11 @@ int tomar_snapshot(struct proceso_info array[], int max_procs) {
             continue;
         }
 
-
-        /* Leer STARTTIME */
-
         long starttime = leer_starttime(pid);
 
         if (starttime < 0) {
             continue;
         }
-
-
-        /* Leer COMM */
 
         char comm[256];
 
@@ -318,19 +304,11 @@ int tomar_snapshot(struct proceso_info array[], int max_procs) {
             continue;
         }
 
-
-        /* Guardar información en el snapshot */
-
         array[contador].pid = pid;
-
         array[contador].euid = euid;
-
         array[contador].starttime = starttime;
-
         array[contador].uid = uid;
-
         array[contador].ppid = ppid;
-
 
         strncpy(array[contador].comm,
                 comm,
@@ -340,7 +318,6 @@ int tomar_snapshot(struct proceso_info array[], int max_procs) {
             sizeof(array[contador].comm) - 1
         ] = '\0';
 
-
         strncpy(array[contador].cmdline,
                 cmdline,
                 sizeof(array[contador].cmdline) - 1);
@@ -348,7 +325,6 @@ int tomar_snapshot(struct proceso_info array[], int max_procs) {
         array[contador].cmdline[
             sizeof(array[contador].cmdline) - 1
         ] = '\0';
-
 
         contador++;
     }
@@ -390,19 +366,12 @@ void comparar_snapshots(
             actual[i].starttime
         );
 
-
         if (indice == -1) {
             continue;
         }
 
-
-        /* Detectar escalada de privilegios */
-
         if (anterior[indice].euid != 0 &&
             actual[i].euid == 0) {
-
-
-            /* Revisar whitelist */
 
             if (en_whitelist(actual[i].comm)) {
 
@@ -416,9 +385,6 @@ void comparar_snapshots(
                 continue;
             }
 
-
-            /* Mostrar alerta en pantalla */
-
             printf(
                 "ALERTA: PID=%d COMM=%s CMDLINE=%s "
                 "PPID=%d UID=%d EUID=%d->%d\n",
@@ -430,9 +396,6 @@ void comparar_snapshots(
                 anterior[indice].euid,
                 actual[i].euid
             );
-
-
-            /* Guardar alerta en archivo */
 
             fprintf(
                 log,
@@ -447,10 +410,104 @@ void comparar_snapshots(
                 actual[i].euid
             );
 
+            fflush(log);
+        }
+    }
+}
+
+
+/* DETECTAR MODULOS OCULTOS */
+
+void detectar_modulos_ocultos(FILE *log) {
+
+    FILE *archivo = fopen("/proc/modules", "r");
+
+    if (archivo == NULL) {
+        perror("Error al abrir /proc/modules");
+        return;
+    }
+
+    char lista_a[1024][256];
+    int cantidad_a = 0;
+    char linea[512];
+
+    /* Leer módulos de /proc/modules */
+    while (fgets(linea, sizeof(linea), archivo) != NULL) {
+
+        if (sscanf(linea, "%255s", lista_a[cantidad_a]) == 1) {
+
+            cantidad_a++;
+
+            if (cantidad_a >= 1024) {
+                break;
+            }
+        }
+    }
+
+    fclose(archivo);
+
+
+    /* Abrir /sys/module/ */
+
+    DIR *dir = opendir("/sys/module");
+
+    if (dir == NULL) {
+        perror("Error al abrir /sys/module");
+        return;
+    }
+
+    struct dirent *entrada;
+
+    while ((entrada = readdir(dir)) != NULL) {
+
+        if (strcmp(entrada->d_name, ".") == 0 ||
+            strcmp(entrada->d_name, "..") == 0) {
+
+            continue;
+        }
+
+        // Dentro del bucle que recorre /sys/module/:
+    char ruta_refcnt[512];
+    snprintf(ruta_refcnt, sizeof(ruta_refcnt),
+             "/sys/module/%s/refcnt", entrada->d_name);
+
+    if (access(ruta_refcnt, F_OK) != 0) {
+        continue;  // Es built-in, no es un módulo cargado
+    }   
+
+        int encontrado = 0;
+
+        /* Buscar módulo de B dentro de A */
+
+        for (int i = 0; i < cantidad_a; i++) {
+
+            if (strcmp(entrada->d_name, lista_a[i]) == 0) {
+
+                encontrado = 1;
+                break;
+            }
+        }
+
+        /* Si está en B pero no en A */
+
+        if (!encontrado) {
+
+            printf(
+                "ALERTA: módulo oculto: %s\n",
+                entrada->d_name
+            );
+
+            fprintf(
+                log,
+                "ALERTA: módulo oculto: %s\n",
+                entrada->d_name
+            );
 
             fflush(log);
         }
     }
+
+    closedir(dir);
 }
 
 
@@ -490,6 +547,10 @@ int main() {
     while (flag) {
 
         sleep(2);
+
+
+        /* Detectar módulos ocultos */
+        detectar_modulos_ocultos(log);
 
 
         int cant_actual =
