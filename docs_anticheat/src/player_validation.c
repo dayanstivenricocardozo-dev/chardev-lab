@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdbool.h>
+#include <stdlib.h>
 
 struct Player {
     char id[10];
@@ -11,15 +13,15 @@ struct Player {
 
 #define MAX_HEALTH_DELTA 100
 
-int health_change_is_suspicious(struct Player *player, int new_health) {
+bool health_change_is_suspicious(struct Player *player, int new_health) {
     if (new_health - player->health > MAX_HEALTH_DELTA) {
         printf("Suspicious health change detected for player %s: %d -> %d\n", player->id, player->health, new_health);
-        return 1;
+        return false;
     }
-    return 0;
+    return true;
 }
 
-int player_distance_squared(struct Player *player1, struct Player *player2) {
+int player_distance_squared(const struct Player *player1, const struct Player *player2) {
 
     int distancia = (player1->positionx - player2->positionx) * (player1->positionx - player2->positionx) +
                     (player1->positiony - player2->positiony) * (player1->positiony - player2->positiony);
@@ -29,6 +31,17 @@ int player_distance_squared(struct Player *player1, struct Player *player2) {
 int main(){
     struct Player player1 = {"Player1", 100, 10, 5, 0, 0};
     struct Player player2 = {"Player2", 100, 10, 5, 10, 10};
+
+
+    struct Player *players = malloc(5 * sizeof(*players));
+
+    if (players == NULL) {
+        printf("Error: no se pudo reservar memoria\n");
+        return 1;
+    }
+
+    
+    
 
     printf("Estado player 1: %s, Health: %d, Damage: %d, Level: %d, Position: (%d, %d)\n", player1.id, player1.health, player1.damage, player1.level, player1.positionx, player1.positiony);
 
@@ -42,9 +55,10 @@ int main(){
         printf("OK\n");
     }
 
-    int distancia = player_distance_squared(&player1, &player2);
-    printf("Distance between players: %d\n", distancia);
+    int distance = player_distance_squared(&player1, &player2);
+    printf("Distance between players: %d\n", distance);
 
+    free(players);
 
 
 }
