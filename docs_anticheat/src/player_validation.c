@@ -13,12 +13,20 @@ struct Player {
 
 #define MAX_HEALTH_DELTA 100
 
-bool health_change_is_suspicious(struct Player *player, int new_health) {
+bool health_change_is_suspicious(const struct Player *player, int new_health) {
     if (new_health - player->health > MAX_HEALTH_DELTA) {
         printf("Suspicious health change detected for player %s: %d -> %d\n", player->id, player->health, new_health);
-        return false;
+        return true;
     }
-    return true;
+    return false;
+}
+
+void print_all_players(const struct Player *array, int count) {
+    for (int i = 0; i < count; i++) {
+        printf("Player %d: ID: %s, Health: %d, Damage: %d, Level: %d, Position: (%d, %d)\n",
+               i + 1, array[i].id, array[i].health, array[i].damage, array[i].level,
+               array[i].positionx, array[i].positiony);
+    }
 }
 
 int player_distance_squared(const struct Player *player1, const struct Player *player2) {
@@ -40,7 +48,11 @@ int main(){
         return 1;
     }
 
-    
+    players[0] = player1;
+    players[1] = player2;
+
+    int num_players = 2; // Porque solo llenaste la posición 0 y 1
+    print_all_players(players, num_players);
     
 
     printf("Estado player 1: %s, Health: %d, Damage: %d, Level: %d, Position: (%d, %d)\n", player1.id, player1.health, player1.damage, player1.level, player1.positionx, player1.positiony);
